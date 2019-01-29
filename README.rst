@@ -34,3 +34,11 @@ series of commands before each step, and undo mistakes made while bisecting::
    git bisect good
    > Bisecting: 16 revisions left to test after this (roughly 4 steps)
    > [dce6716418415ec17adc60d01196a285e4ecf6b5] Add --foo option
+
+Installation
+============
+
+Manually::
+
+    $ curl https://raw.githubusercontent.com/wolever/git-ibisect/master/git-ibisect -O /usr/local/bin/git-ibisect
+    $ chmod +x /usr/local/bin/git-ibisect
