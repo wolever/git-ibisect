@@ -28,6 +28,11 @@ def print_output(output):
         return
     print("> " + "\n> ".join(x for x in output.splitlines()))
 
+def indent(output):
+    if not output:
+        return
+    return "  " + "\n  ".join(x for x in output.splitlines())
+
 def _xcall(cmd, show_output=False, show_command=False):
     """ Returns the output of calling ``cmd``, or raises an exception if ``cmd`` fails. """
     if isinstance(cmd, basestring):
@@ -140,7 +145,7 @@ class IBisect(Cmd):
         if cmd.startswith("git "):
             self.git_call(shlex.split(cmd)[1:])
             return
-        super(IBisect, self).default(cmd)
+        Cmd.default(self, cmd)
 
     def do_EOF(self, args):
         sys.exit(0)
@@ -198,6 +203,31 @@ class IBisect(Cmd):
 
     def do_co(self, args):
         self.git_call("checkout " + args)
+
+    def do_status(self, args):
+        def readfile(fname):
+            with open(fname) as f:
+                return f.read().strip()
+        with chdir(self.repo_root):
+            print("current commit:")
+            print(indent(xcall("git show --pretty=short -q")))
+            print()
+
+            code, log = call("git bisect log")
+            if code > 0:
+                print("not bisecting")
+                return
+
+            current = xcall("git rev-parse HEAD")
+            expected = readfile(".git/BISECT_EXPECTED_REV")
+            if current != expected:
+                print("expected commit (where bisect expects to be):")
+                print(indent(xcall(["git", "show", "-q", "--pretty=short", expected])))
+                print()
+
+            print("bisect start: %s" %(readfile(".git/BISECT_START"), ))
+            print("log:")
+            print(indent(log))
 
     ###
     # Helper functions
