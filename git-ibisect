@@ -173,11 +173,9 @@ class IBisect(Cmd):
             print("nothing to undo.")
             return
 
-        cur_commit = xcall("git rev-parse HEAD")
         to_undo = lines.pop()
         print("undoing: %s" %(to_undo, ))
         self.replay(lines)
-        xcall(["git", "checkout", cur_commit])
 
     def do_good(self, args):
         self.git_call("bisect good")
