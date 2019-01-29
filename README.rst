@@ -1,6 +1,8 @@
 ``git-ibisect``: interactively run git bisect (with undo!)
 ==========================================================
 
+**ALPHA WARNING**: this project is still *very alpha*!
+
 ``git-ibisect`` is an interactive wrapper around ``git bisect`` which makes it
 easy to run bisect from any directory (not just the repository root), run a
 series of commands before each step, and undo mistakes made while bisecting::
