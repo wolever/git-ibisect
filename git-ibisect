@@ -1,0 +1,261 @@
+#!/usr/bin/env python
+"""
+An interactive wrapper around ``git-bisect``
+"""
+
+from __future__ import print_function
+
+import os
+import sys
+import shlex
+import argparse
+import tempfile
+from cmd import Cmd
+import subprocess as sp
+from contextlib import contextmanager
+
+def get_terminal_size():
+    # copy-paste from StackOverflow: https://stackoverflow.com/a/3010495/71522
+    # No idea if this will work on Windows and friends; PRs very appreciated
+    import fcntl, termios, struct
+    th, tw, hp, wp = struct.unpack('HHHH',
+        fcntl.ioctl(0, termios.TIOCGWINSZ,
+        struct.pack('HHHH', 0, 0, 0, 0)))
+    return tw, th
+
+def print_output(output):
+    if not output:
+        return
+    print("> " + "\n> ".join(x for x in output.splitlines()))
+
+def _xcall(cmd, show_output=False, show_command=False):
+    """ Returns the output of calling ``cmd``, or raises an exception if ``cmd`` fails. """
+    if isinstance(cmd, basestring):
+        cmd = cmd.split()
+    if show_output or show_command:
+        print(" ".join(cmd))
+    res = sp.check_output(cmd, stderr=sp.STDOUT, stdin=None).decode("utf-8").strip()
+    if show_output:
+        print_output(res)
+    return res
+
+def xcall(cmd, **kwargs):
+    try:
+        return _xcall(cmd, **kwargs)
+    except sp.CalledProcessError as e:
+        print_output(e.output.strip())
+
+def call(cmd, **kwargs):
+    """ Returns a tuple of (exit status, output) from calling ``cmd``. """
+    try:
+        return (0, _xcall(cmd, **kwargs))
+    except sp.CalledProcessError as e:
+        if kwargs.get("show_output"):
+            print_output(e.output)
+        return (e.returncode, e.output.strip())
+
+@contextmanager
+def chdir(path):
+    old = os.getcwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(old)
+
+C_GREEN = '\033[0;32m'
+C_BLUE = '\033[0;34m'
+C_RESET = '\033[0;0m'
+C_BLACK = '\033[30;1m'
+
+parser = argparse.ArgumentParser(description="Interactive wrapper around git-bisect")
+
+class IBisect(Cmd):
+    prompt = "ibisect> "
+
+    status = None # "stopped" | "bisecting"
+    repo_root = None
+
+    def run(self):
+        self.repo_root = xcall("git rev-parse --show-toplevel")
+        code, output = call("git bisect log")
+        self.status = "stopped" if code > 0 else "bisecting"
+
+        if self.status == "stopped":
+            first_commit = self.read_commit("which commit should we start with")
+            self.git_call("bisect start")
+            self.git_call("bisect bad")
+            self.git_call(["checkout", first_commit])
+
+        self.update_prompt()
+        self.cmdloop()
+
+    def update_prompt(self):
+        code, logs = call("git bisect log")
+        if code > 0:
+            self.prompt = "ibisect (not bisecting)> "
+            return
+
+        last_good = None
+        last_bad = None
+        for line in logs.splitlines():
+            if line.startswith("git bisect bad"):
+                last_bad = line.split()[3]
+            if line.startswith("git bisect good"):
+                last_good = line.split()[3]
+
+        if not last_good and not last_bad:
+            self.prompt = "ibisect (no good or bad)> "
+            return
+
+        if last_good and not last_bad:
+            self.prompt = "ibisect (no bad)> "
+            return
+
+        if last_bad and not last_good:
+            self.prompt = "ibisect (no good)> "
+            return
+
+        cur = xcall(["git", "rev-parse", "HEAD"])
+        deltas = [x for x in [
+            len(xcall(["git", "log", "%s..%s" %(last_good, cur), "--pretty=oneline"]).splitlines()),
+            len(xcall(["git", "log", "%s..%s" %(last_bad, cur), "--pretty=oneline"]).splitlines()),
+            len(xcall(["git", "log", "%s..%s" %(cur, last_good), "--pretty=oneline"]).splitlines()),
+            len(xcall(["git", "log", "%s..%s" %(cur, last_bad), "--pretty=oneline"]).splitlines()),
+        ] if x > 0]
+        delta = max(deltas) if deltas else 0
+        self.prompt = "ibisect (~%s commits)> " %(delta and delta - 1)
+
+    ###
+    # cmd.Cmd stuff
+    ###
+
+    def postcmd(self, stop, line):
+        self.update_prompt()
+
+    def emptyline(self):
+        return
+
+    def default(self, cmd):
+        if cmd.startswith("git "):
+            self.git_call(shlex.split(cmd)[1:])
+            return
+        super(IBisect, self).default(cmd)
+
+    def do_EOF(self, args):
+        sys.exit(0)
+
+
+    ###
+    # Interactive commands
+    ###
+
+    def do_run(self, args):
+        while True:
+            code = sp.call(shlex.split(args))
+            print("'%s' exited with status %s" %(args, code))
+            if self.read_and_mark("bad" if code > 0 else "good"):
+                break
+            if not self.read_yn("re-run '%s'" %(args, )):
+                break
+
+    def do_undo(self, args):
+        code, log = call("git bisect log")
+        if code > 0:
+            print("nothing to undo.")
+            return
+
+        lines = [
+            line for line in log.splitlines()
+            if not line.startswith("#") and not line.startswith("git bisect start")
+        ]
+        if not lines:
+            print("nothing to undo.")
+            return
+
+        cur_commit = xcall("git rev-parse HEAD")
+        to_undo = lines.pop()
+        print("undoing: %s" %(to_undo, ))
+        self.replay(lines)
+        xcall(["git", "checkout", cur_commit])
+
+    def do_good(self, args):
+        self.git_call("bisect good")
+
+    def do_bad(self, args):
+        self.git_call("bisect bad")
+
+    def do_log(self, args):
+        self.git_call("bisect log")
+
+    def do_reset(self, args):
+        # TODO: make it possible to undo a reset
+        self.git_call("bisect reset")
+
+    def do_start(self, args):
+        self.git_call("bisect start")
+
+    def do_checkout(self, args):
+        self.git_call("checkout " + args)
+
+    def do_co(self, args):
+        self.git_call("checkout " + args)
+
+    ###
+    # Helper functions
+    ###
+
+    def replay(self, logs):
+        # Replay a bisect log, excpet actuall work (unlike `git bisect replay`,
+        # which does weird and not-so-wonderful things)
+        self.git_call("bisect reset", show_output=False)
+        self.git_call("bisect start")
+        for line in logs:
+            if not line.startswith("git bisect"):
+                print("ERROR: bad line: %s" %(line, ))
+                print("All logs: %s" %(logs, ))
+                return
+            bits = line.split()
+            action = bits[2]
+            if action == "start":
+                continue
+            elif action in ("good", "bad"):
+                self.git_call(["bisect", action, bits[3]], show_output=False, show_command=True)
+            else:
+                print("ERROR: bad line: %s" %(line, ))
+                print("All logs: %s" %(logs, ))
+                return
+
+    def read(self, msg):
+        res = None
+        while not res:
+            res = raw_input(msg).strip()
+        return res
+
+    def read_yn(self, msg):
+        res = self.read(msg + " [Y/n]: ").lower()
+        return res.startswith("y")
+
+    def read_commit(self, msg):
+        res = self.read(msg + " (hash, branch, or a number of commits back): ")
+        if res.isdigit():
+            res = "HEAD~%s" %(res, )
+        return res
+
+    def read_and_mark(self, good_or_bad):
+        if self.read_yn("mark this commit as %s" %(good_or_bad, )):
+            res, _ = self.git_call(["bisect", good_or_bad], x=False)
+            if res > 0:
+                print("git returned an error (see above)")
+                return True
+
+    def git_call(self, cmd, x=True, show_output=True, show_command=False):
+        with chdir(self.repo_root):
+            if isinstance(cmd, basestring):
+                cmd = cmd.split()
+            return (xcall if x else call)(["git"] + cmd, show_output=show_output, show_command=show_command)
+
+
+if __name__ == "__main__":
+    args = parser.parse_args()
+    IBisect().run()
