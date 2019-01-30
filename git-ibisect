@@ -6,12 +6,13 @@ An interactive wrapper around ``git-bisect``
 from __future__ import print_function
 
 import os
+import re
 import sys
 import shlex
 import argparse
-import tempfile
 from cmd import Cmd
 import subprocess as sp
+from collections import namedtuple
 from contextlib import contextmanager
 
 def get_terminal_size():
@@ -72,64 +73,51 @@ C_GREEN = '\033[0;32m'
 C_BLUE = '\033[0;34m'
 C_RESET = '\033[0;0m'
 C_BLACK = '\033[30;1m'
+C_BOLD_WHITE = '\033[0;1m'
+HINT = "%shint:%s " %(C_BOLD_WHITE, C_RESET)
 
 parser = argparse.ArgumentParser(description="Interactive wrapper around git-bisect")
 
+BisectStatus = namedtuple("BisectStatus", "is_active is_inactive is_finished log last_good last_bad first_bad")
+
 class IBisect(Cmd):
     prompt = "ibisect> "
-
-    status = None # "stopped" | "bisecting"
     repo_root = None
 
     def run(self):
         self.repo_root = xcall("git rev-parse --show-toplevel")
-        code, output = call("git bisect log")
-        self.status = "stopped" if code > 0 else "bisecting"
-
-        if self.status == "stopped":
-            first_commit = self.read_commit("which commit should we start with")
-            self.git_call("bisect start")
-            self.git_call("bisect bad")
-            self.git_call(["checkout", first_commit])
+        self.ensure_active(ask_to_start=False)
 
         self.update_prompt()
         self.cmdloop()
 
     def update_prompt(self):
-        code, logs = call("git bisect log")
-        if code > 0:
+        status = self.get_bisect_status()
+        if status.is_inactive:
             self.prompt = "ibisect (not bisecting)> "
-            return
 
-        last_good = None
-        last_bad = None
-        for line in logs.splitlines():
-            if line.startswith("git bisect bad"):
-                last_bad = line.split()[3]
-            if line.startswith("git bisect good"):
-                last_good = line.split()[3]
+        elif status.is_finished:
+            self.prompt = "ibisect (finished: %s)> " %(status.first_bad[:8], )
 
-        if not last_good and not last_bad:
+        elif not status.last_good and not status.last_bad:
             self.prompt = "ibisect (no good or bad)> "
-            return
 
-        if last_good and not last_bad:
+        elif status.last_good and not status.last_bad:
             self.prompt = "ibisect (no bad)> "
-            return
 
-        if last_bad and not last_good:
+        elif status.last_bad and not status.last_good:
             self.prompt = "ibisect (no good)> "
-            return
 
-        cur = xcall(["git", "rev-parse", "HEAD"])
-        deltas = [x for x in [
-            len(xcall(["git", "log", "%s..%s" %(last_good, cur), "--pretty=oneline"]).splitlines()),
-            len(xcall(["git", "log", "%s..%s" %(last_bad, cur), "--pretty=oneline"]).splitlines()),
-            len(xcall(["git", "log", "%s..%s" %(cur, last_good), "--pretty=oneline"]).splitlines()),
-            len(xcall(["git", "log", "%s..%s" %(cur, last_bad), "--pretty=oneline"]).splitlines()),
-        ] if x > 0]
-        delta = max(deltas) if deltas else 0
-        self.prompt = "ibisect (~%s commits)> " %(delta and delta - 1)
+        else:
+            cur = xcall(["git", "rev-parse", "HEAD"])
+            deltas = [x for x in [
+                len(xcall(["git", "log", "%s..%s" %(status.last_good, cur), "--pretty=oneline"]).splitlines()),
+                len(xcall(["git", "log", "%s..%s" %(status.last_bad, cur), "--pretty=oneline"]).splitlines()),
+                len(xcall(["git", "log", "%s..%s" %(cur, status.last_good), "--pretty=oneline"]).splitlines()),
+                len(xcall(["git", "log", "%s..%s" %(cur, status.last_bad), "--pretty=oneline"]).splitlines()),
+            ] if x > 0]
+            delta = max(deltas) if deltas else 0
+            self.prompt = "ibisect (~%s commits)> " %(delta and delta - 1)
 
     ###
     # cmd.Cmd stuff
@@ -155,23 +143,53 @@ class IBisect(Cmd):
     # Interactive commands
     ###
 
-    def do_run(self, args):
-        while True:
-            code = sp.call(shlex.split(args))
+    def do_run(self, args, auto=False):
+        if self.ensure_active():
+            return
+
+        while not self.get_bisect_status().is_finished:
+            code = os.system(args)
             print("'%s' exited with status %s" %(args, code))
-            if self.read_and_mark("bad" if code > 0 else "good"):
-                break
-            if not self.read_yn("re-run '%s'" %(args, )):
+            if auto:
+                self.git_call(["bisect", "bad" if code > 0 else "good"])
+            else:
+                if self.read_and_mark("bad" if code > 0 else "good"):
+                    break
+
+                if self.get_bisect_status().is_finished:
+                    return
+
+                if self.read_yn("re-run '%s'" %(args, )):
+                    print()
+                    continue
+
                 break
 
+            status = self.get_bisect_status()
+            if not status.last_good:
+                break
+
+        status = self.get_bisect_status()
+        if not status.last_good:
+            print()
+            print("no good commit found; aborting.")
+            print()
+            print(HINT + "try checking out an older commit then running again:")
+            print("  ibisect> checkout HEAD~50")
+            print("  ibisect> %s %s" %("autorun" if auto else "run", args))
+            print()
+
+    def do_autorun(self, args):
+        self.do_run(auto=True)
+
     def do_undo(self, args):
-        code, log = call("git bisect log")
-        if code > 0:
+        status = self.get_bisect_status()
+        if status.is_inactive or not (status.last_good or status.last_bad):
             print("nothing to undo.")
             return
 
         lines = [
-            line for line in log.splitlines()
+            line for line in status.log
             if not line.startswith("#") and not line.startswith("git bisect start")
         ]
         if not lines:
@@ -183,9 +201,13 @@ class IBisect(Cmd):
         self.replay(lines)
 
     def do_good(self, args):
+        if self.ensure_active():
+            return
         self.git_call("bisect good")
 
     def do_bad(self, args):
+        if self.ensure_active():
+            return
         self.git_call("bisect bad")
 
     def do_log(self, args):
@@ -196,7 +218,12 @@ class IBisect(Cmd):
         self.git_call("bisect reset")
 
     def do_start(self, args):
-        self.git_call("bisect start")
+        status = self.get_bisect_status()
+        if status.is_active:
+            if not self.read_yn("bisect already running; restart?", default="N"):
+                return
+            self.git_call("bisect reset")
+        self.ensure_active(ask_to_start=False)
 
     def do_checkout(self, args):
         self.git_call("checkout " + args)
@@ -205,33 +232,77 @@ class IBisect(Cmd):
         self.git_call("checkout " + args)
 
     def do_status(self, args):
-        def readfile(fname):
-            with open(fname) as f:
-                return f.read().strip()
         with chdir(self.repo_root):
-            print("current commit:")
-            print(indent(xcall("git show --pretty=short -q")))
-            print()
+            status = self.get_bisect_status()
+            current = xcall("git rev-parse HEAD")
+            if current != status.first_bad:
+                print("current commit:")
+                print(indent(xcall("git show --pretty=short -q")))
+                print()
 
-            code, log = call("git bisect log")
-            if code > 0:
+            if status.is_inactive:
                 print("not bisecting")
+                print()
                 return
 
-            current = xcall("git rev-parse HEAD")
-            expected = readfile(".git/BISECT_EXPECTED_REV")
+            if status.is_finished:
+                print("finished; first bad commit:")
+                print(indent(xcall(["git", "show", "-q", "--pretty=short", status.first_bad])))
+                print()
+
+            expected = self.readfile(".git/BISECT_EXPECTED_REV")
             if current != expected:
                 print("expected commit (where bisect expects to be):")
                 print(indent(xcall(["git", "show", "-q", "--pretty=short", expected])))
                 print()
 
-            print("bisect start: %s" %(readfile(".git/BISECT_START"), ))
+            print("bisect start: %s" %(self.readfile(".git/BISECT_START"), ))
             print("log:")
-            print(indent(log))
+            print(indent("\n".join(status.log)))
+            print()
 
     ###
     # Helper functions
     ###
+
+    def get_bisect_status(self):
+        is_active, log = self._get_bisect_log()
+        is_finished = False
+        last_good = None
+        last_bad = None
+        first_bad = None
+        for line in log:
+            if line.startswith("git bisect bad"):
+                last_bad = line.split()[3]
+            elif line.startswith("git bisect good"):
+                last_good = line.split()[3]
+            elif "first bad commit" in line:
+                is_finished = True
+                first_bad = (
+                    line
+                        .split("[")[1]
+                        .split("]")[0]
+                )
+
+        return BisectStatus(
+            is_active=is_active,
+            is_inactive=not is_active,
+            is_finished=is_finished,
+            log=log,
+            last_good=last_good,
+            last_bad=last_bad,
+            first_bad=first_bad,
+        )
+
+    def _get_bisect_log(self):
+        try:
+            return (True, self.readfile(".git/BISECT_LOG").splitlines())
+        except IOError:
+            return (False, [])
+
+    def readfile(self, fname):
+        with open(os.path.join(self.repo_root, fname)) as f:
+            return f.read().strip()
 
     def replay(self, logs):
         # Replay a bisect log, excpet actuall work (unlike `git bisect replay`,
@@ -254,18 +325,31 @@ class IBisect(Cmd):
                 print("All logs: %s" %(logs, ))
                 return
 
-    def read(self, msg):
+    def read(self, msg, default=None, empty=False):
+        if default:
+            msg += " [%s]" %(default, )
+        msg += ": "
         res = None
         while not res:
             res = raw_input(msg).strip()
+            if not res and default:
+                return default
+            if empty:
+                return res
         return res
 
-    def read_yn(self, msg):
-        res = self.read(msg + " [Y/n]: ").lower()
+    def read_yn(self, msg, default="Y"):
+        default = default.lower()
+        opts = (
+            "Y/n" if default == "y" else
+            "y/N" if default == "n" else
+            default
+        )
+        res = self.read(msg + " [%s]" %(opts, ), empty=True).lower() or default
         return res.startswith("y")
 
-    def read_commit(self, msg):
-        res = self.read(msg + " (hash, branch, or a number of commits back): ")
+    def read_commit(self, msg, default=None):
+        res = self.read(msg + " (hash, branch, or a number of commits back)", default=default)
         if res.isdigit():
             res = "HEAD~%s" %(res, )
         return res
@@ -282,6 +366,49 @@ class IBisect(Cmd):
             if isinstance(cmd, basestring):
                 cmd = cmd.split()
             return (xcall if x else call)(["git"] + cmd, show_output=show_output, show_command=show_command)
+
+    def guess_last_branch(self):
+        # read the reflog to guess which branch was used last
+        reflog = xcall("git reflog -100")
+        line_re = re.compile("moving from (.*) to (.*)")
+        for line in reflog.splitlines():
+            match = line_re.search(line)
+            if not match:
+                continue
+            for bit in reversed(match.groups()):
+                # Skip refs like HEAD~10 or @{-5}
+                if "~" in bit or "@" in bit:
+                    continue
+                # Skip hashes
+                if len(bit) == 40:
+                    continue
+                return bit
+        return None
+
+    def ensure_active(self, ask_to_start=True):
+        status = self.get_bisect_status()
+        if status.is_active:
+            return False
+
+        if ask_to_start:
+            if not self.read_yn("bisect is not active. Start bisecting?"):
+                return True
+
+        cur_head = self.readfile(".git/HEAD")
+        if not cur_head.startswith("ref:"):
+            if self.read_yn("you are not on a branch (HEAD: %s). Check one out first?" %(cur_head[:8], )):
+                branch_guess = self.guess_last_branch()
+                ref = self.read_commit("first bad commit", default=branch_guess)
+                self.git_call(["checkout", ref])
+
+        first_commit = self.read_commit("guess which commit is first good commit")
+        self.git_call("bisect start")
+        self.git_call("bisect bad")
+        self.git_call(["checkout", first_commit])
+        print()
+        print(HINT + "test this commit to see if it is good or bad:")
+        print("  ibisect> run make clean && make && make test")
+        print()
 
 
 if __name__ == "__main__":
