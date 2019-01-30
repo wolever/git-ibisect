@@ -147,29 +147,34 @@ class IBisect(Cmd):
         if self.ensure_active():
             return
 
-        while not self.get_bisect_status().is_finished:
+        while True:
             code = os.system(args)
             print("'%s' exited with status %s" %(args, code))
             if auto:
                 self.git_call(["bisect", "bad" if code > 0 else "good"])
             else:
                 if self.read_and_mark("bad" if code > 0 else "good"):
-                    break
-
-                if self.get_bisect_status().is_finished:
                     return
 
-                if self.read_yn("re-run '%s'" %(args, )):
-                    print()
-                    continue
-
-                break
-
             status = self.get_bisect_status()
-            if not status.last_good:
+            # Make sure we have a last good commit (otherwise marking this
+            # one bad again won't help)
+            should_run_again = status.last_good and (
+                # Don't run again if we're finished
+                not status.is_finished or
+
+                # Do run again if we're in auto mode
+                auto or
+
+                # Otherwise prompt the user to see if they want to run again
+                self.read_yn("re-run '%s'" %(args,))
+            )
+            if not should_run_again:
                 break
 
-        status = self.get_bisect_status()
+        if status.is_finished:
+            return
+
         if not status.last_good:
             print()
             print("no good commit found; aborting.")
@@ -355,11 +360,15 @@ class IBisect(Cmd):
         return res
 
     def read_and_mark(self, good_or_bad):
-        if self.read_yn("mark this commit as %s" %(good_or_bad, )):
-            res, _ = self.git_call(["bisect", good_or_bad], x=False)
-            if res > 0:
-                print("git returned an error (see above)")
-                return True
+        if not self.read_yn("mark this commit as %s" %(good_or_bad, )):
+            return True
+
+        res, _ = self.git_call(["bisect", good_or_bad], x=False)
+        if res > 0:
+            print("git returned an error (see above)")
+            return True
+
+        return False
 
     def git_call(self, cmd, x=True, show_output=True, show_command=False):
         with chdir(self.repo_root):
