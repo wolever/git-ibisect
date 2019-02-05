@@ -103,3 +103,11 @@ TODO
 - Handle bisecting when starting from a dirty state (ex, prompt to `git stash`?)
 - Figure out how to write tests
 - Tab completion of filenames when using `run` and `autorun`
+- Make sure ^C is handled well:
+  - When running tests: should prompt "was this commit/bad/ignore?"
+  - When prompting for input: should return to command line
+- Add option to skip commit
+- Allow bisect options to be passed from the command line:
+  - `git ibisect reset`
+  - `git ibisect undo`
+  - etc
