@@ -185,7 +185,7 @@ class IBisect(Cmd):
             print()
 
     def do_autorun(self, args):
-        self.do_run(auto=True)
+        self.do_run(args, auto=True)
 
     def do_undo(self, args):
         status = self.get_bisect_status()

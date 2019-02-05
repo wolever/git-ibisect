@@ -93,3 +93,13 @@ Manually:
 
     $ curl https://raw.githubusercontent.com/wolever/git-ibisect/master/git-ibisect -O /usr/local/bin/git-ibisect
     $ chmod +x /usr/local/bin/git-ibisect
+
+TODO
+====
+
+- Documentation:
+  - Introduction which describes what bisect is and how it works
+  - Better walkthrough of using ibisct
+- Handle bisecting when starting from a dirty state (ex, prompt to `git stash`?)
+- Figure out how to write tests
+- Tab completion of filenames when using `run` and `autorun`
