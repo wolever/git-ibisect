@@ -148,6 +148,7 @@ class IBisect(Cmd):
             return
 
         while True:
+            print(args)
             code = os.system(args)
             print("'%s' exited with status %s" %(args, code))
             if auto:
@@ -215,8 +216,20 @@ class IBisect(Cmd):
             return
         self.git_call("bisect bad")
 
+    def do_skip(self, args):
+        if self.ensure_active():
+            return
+        self.git_call("bisect skip")
+
     def do_log(self, args):
         self.git_call("bisect log")
+
+    def do_show(self, args):
+        self.git_call("show " + args)
+
+    def do_stop(self, args):
+        # TODO: make it possible to undo a reset
+        self.git_call("bisect reset")
 
     def do_reset(self, args):
         # TODO: make it possible to undo a reset
@@ -235,6 +248,12 @@ class IBisect(Cmd):
 
     def do_co(self, args):
         self.git_call("checkout " + args)
+
+    def do_exit(self, args):
+        sys.exit(0)
+
+    def do_quit(self, args):
+        sys.exit(0)
 
     def do_status(self, args):
         with chdir(self.repo_root):
@@ -310,8 +329,8 @@ class IBisect(Cmd):
             return f.read().strip()
 
     def replay(self, logs):
-        # Replay a bisect log, excpet actuall work (unlike `git bisect replay`,
-        # which does weird and not-so-wonderful things)
+        # Replay a bisect log, except actually work (unlike `git bisect
+        # replay`, which does weird and not-so-wonderful things)
         self.git_call("bisect reset", show_output=False)
         self.git_call("bisect start")
         for line in logs:
@@ -323,7 +342,7 @@ class IBisect(Cmd):
             action = bits[2]
             if action == "start":
                 continue
-            elif action in ("good", "bad"):
+            elif action in ("good", "bad", "skip"):
                 self.git_call(["bisect", action, bits[3]], show_output=False, show_command=True)
             else:
                 print("ERROR: bad line: %s" %(line, ))
