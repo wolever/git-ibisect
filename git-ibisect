@@ -15,6 +15,8 @@ import subprocess as sp
 from collections import namedtuple
 from contextlib import contextmanager
 
+Undefined = object()
+
 def get_terminal_size():
     # copy-paste from StackOverflow: https://stackoverflow.com/a/3010495/71522
     # No idea if this will work on Windows and friends; PRs very appreciated
@@ -158,12 +160,16 @@ class IBisect(Cmd):
                     return
 
             status = self.get_bisect_status()
-            # Make sure we have a last good commit (otherwise marking this
-            # one bad again won't help)
-            should_run_again = status.last_good and (
-                # Don't run again if we're finished
-                not status.is_finished or
+            still_bisecting = (
+                # If there is no good commit, there's nothign we can do, so
+                # we're finished
+                status.last_good and
 
+                # If we're finished (... obviously)
+                not status.is_finished
+            )
+
+            should_run_again = still_bisecting and (
                 # Do run again if we're in auto mode
                 auto or
 
@@ -274,8 +280,8 @@ class IBisect(Cmd):
                 print(indent(xcall(["git", "show", "-q", "--pretty=short", status.first_bad])))
                 print()
 
-            expected = self.readfile(".git/BISECT_EXPECTED_REV")
-            if current != expected:
+            expected = self.readfile(".git/BISECT_EXPECTED_REV", default=None)
+            if expected is not None and current != expected:
                 print("expected commit (where bisect expects to be):")
                 print(indent(xcall(["git", "show", "-q", "--pretty=short", expected])))
                 print()
@@ -324,9 +330,14 @@ class IBisect(Cmd):
         except IOError:
             return (False, [])
 
-    def readfile(self, fname):
-        with open(os.path.join(self.repo_root, fname)) as f:
-            return f.read().strip()
+    def readfile(self, fname, default=Undefined):
+        try:
+            with open(os.path.join(self.repo_root, fname)) as f:
+                return f.read().strip()
+        except IOError as e:
+            if e.errno == 2 and default is not Undefined:
+                return default
+            raise
 
     def replay(self, logs):
         # Replay a bisect log, except actually work (unlike `git bisect
