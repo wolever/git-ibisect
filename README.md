@@ -84,12 +84,12 @@ rm -r node_modules; npm install; npm run test
 ...
 Tests passed!
 'rm -r node_modules; npm install; npm run test' exited with status 0
-mark this commit as good [Y/n]:</code></pre>
+this commit looks good; mark it (good, bad, skip, abort) [good]:</code></pre>
 
 Because the tests passed (exited with a status of 0), `ibisect` asks whether
 this commit should be marked as good:
 
-<pre><code>mark this commit as good [Y/n]: <strong>y</strong>
+<pre><code>this commit looks good; mark it (good, bad, skip, abort) [good]: <strong>good</strong>
 git bisect good
 > Bisecting: 78 revisions left to test after this (roughly 6 steps)
 > [6bc84f5e8d2091f34c8e7deddb25a45500e96fe6] Make the button red</code></pre>
@@ -108,7 +108,7 @@ those 50 commits, and the commits in those branches may need to be checked.)
 After the commit is marked as good, `ibisect` will re-run the tests, and prompt
 again to ask whether the commit is good:
 
-<pre><code>mark this commit as good [Y/n]: y
+<pre><code>this commit looks good; mark it (good, bad, skip, abort) [good]: good
 git bisect good
 > Bisecting: 78 revisions left to test after this (roughly 6 steps)
 > [6bc84f5e8d2091f34c8e7deddb25a45500e96fe6] Make the button red
@@ -116,7 +116,7 @@ rm -r node_modules; npm install; npm run test
 ...
 Tests passed!
 'rm -r node_modules; npm install; npm run test' exited with status 0
-mark this commit as good [Y/n]: <storng>y</storng>
+this commit looks good; mark it (good, bad, skip, abort) [good]: <strong>good</strong>
 git bisect good
 > Bisecting: 19 revisions left to test after this (roughly 4 steps)
 > [c1fb14666a830a238deda8a75fc32d853ab7369c] Add a popup hint</code></pre>
@@ -127,12 +127,12 @@ Now there are only 19 commits left to check!
 ...
 Tests failed!
 'rm -r node_modules; npm install; npm run test' exited with status 1
-mark this commit as bad [Y/n]:</code></pre>
+this commit looks bad; mark it (good, bad, skip, abort) [bad]: </code></pre>
 
 Because the test suite failed this time, `ibisect` prompts to mark this commit
 as being bad:
 
-<pre><code>mark this commit as bad [Y/n]: <strong>y</strong>
+<pre><code>this commit looks bad; mark it (good, bad, skip, abort) [bad]: <strong>bad</strong>
 git bisect bad
 > Bisecting: 9 revisions left to test after this (roughly 3 steps)
 > [c734f65cbffac961cd5bfb23737633f1a25d128c] Fix missing comma</code></pre>
@@ -143,19 +143,19 @@ And the testing continues:
 ...
 npm: download failed!
 'rm -r node_modules; npm install; npm run test' exited with status 1
-mark this commit as bad [Y/n]: <strong>y</strong>
+this commit looks bad; mark it (good, bad, skip, abort) [bad]: <strong>bad</strong>
 git bisect bad</code></pre>
 
 This time, the `npm install` failed with an unrelated error, but it was
 accidentally marked as being bad. To correct this, we'll use `ctrl-c` to cancel
-the test, reply with `n` to return to the `ibisect` prompt:
+the test, reply with `abort` to return to the `ibisect` prompt:
 
 <pre><code>git bisect bad
 rm -r node_modules; npm install; npm run test
 ...
 ^C
 'rm -r node_modules; npm install; npm run test' exited with status 1
-mark this commit as bad [Y/n]: <strong>n</strong>
+this commit looks bad; mark it (good, bad, skip, abort) [bad]: <strong>abort</strong>
 ibisect (~4 commits)&gt;</code></pre>
 
 Then use `undo` to undo the last action:
@@ -198,7 +198,7 @@ And let the tests run for a few more iterations, until finally:
 <pre><code>...
 Tests failed!
 'rm -r node_modules; npm install; npm run test' exited with status 1
-mark this commit as bad [Y/n]: <strong>y</strong>
+this commit looks bad; mark it (good, bad, skip, abort) [bad]: <strong>bad</strong>
 git bisect bad
 > 1555e0aa050d1cd538a1c9b8533909de3f7246b0 is the first bad commit
 > commit 1555e0aa050d1cd538a1c9b8533909de3f7246b0

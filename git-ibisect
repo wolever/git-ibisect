@@ -390,10 +390,23 @@ class IBisect(Cmd):
         return res
 
     def read_and_mark(self, good_or_bad):
-        if not self.read_yn("mark this commit as %s" %(good_or_bad, )):
-            return True
+        responses = {
+            'g': 'good',
+            'b': 'bad',
+            's': 'skip',
+        }
+        while True:
+            resp = self.read(
+                "this commit looks %s; mark it (good, bad, skip, abort)",
+                default=good_or_bad,
+            )[:1].lower()
+            if resp in responses:
+                break
+            if resp == 'a' or resp == 'c':
+                return True
 
-        res, _ = self.git_call(["bisect", good_or_bad], x=False)
+        to_mark = responses[resp]
+        res, _ = self.git_call(["bisect", to_mark], x=False)
         if res > 0:
             print("git returned an error (see above)")
             return True
