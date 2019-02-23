@@ -280,8 +280,7 @@ TODO
 ====
 
 - Documentation:
-  - Introduction which describes what bisect is and how it works
-  - Better walkthrough of using ibisct
+  - docstrings on each command
 - Handle bisecting when starting from a dirty state (ex, prompt to `git stash`?)
 - Figure out how to write tests
 - Tab completion of filenames when using `run` and `autorun`

@@ -79,6 +79,7 @@ C_BOLD_WHITE = '\033[0;1m'
 HINT = "%shint:%s " %(C_BOLD_WHITE, C_RESET)
 
 parser = argparse.ArgumentParser(description="Interactive wrapper around git-bisect")
+parser.add_argument("cmd", nargs="*", help="Run one command and exit")
 
 BisectStatus = namedtuple("BisectStatus", "is_active is_inactive is_finished log last_good last_bad first_bad")
 
@@ -86,9 +87,14 @@ class IBisect(Cmd):
     prompt = "ibisect> "
     repo_root = None
 
-    def run(self):
+    def run(self, args):
         self.repo_root = xcall("git rev-parse --show-toplevel")
         self.ensure_active(ask_to_start=False)
+
+        if args.cmd:
+            line = " ".join(args.cmd)
+            self.onecmd(line)
+            return
 
         self.update_prompt()
         while True:
@@ -477,4 +483,4 @@ class IBisect(Cmd):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    IBisect().run()
+    IBisect().run(args)
