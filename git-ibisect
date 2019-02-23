@@ -91,7 +91,12 @@ class IBisect(Cmd):
         self.ensure_active(ask_to_start=False)
 
         self.update_prompt()
-        self.cmdloop()
+        while True:
+            try:
+                return self.cmdloop()
+            except KeyboardInterrupt:
+                print("^C")
+                continue
 
     def update_prompt(self):
         status = self.get_bisect_status()
@@ -291,6 +296,13 @@ class IBisect(Cmd):
             print(indent("\n".join(status.log)))
             print()
 
+    def onecmd(self, line):
+        try:
+            return Cmd.onecmd(self, line)
+        except KeyboardInterrupt:
+            print("^C")
+            return True
+
     ###
     # Helper functions
     ###
@@ -397,7 +409,7 @@ class IBisect(Cmd):
         }
         while True:
             resp = self.read(
-                "this commit looks %s; mark it (good, bad, skip, abort)",
+                "this commit looks %s; mark it (good, bad, skip, abort)" %(good_or_bad, ),
                 default=good_or_bad,
             )[:1].lower()
             if resp in responses:
