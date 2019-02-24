@@ -1,0 +1,82 @@
+#!/bin/bash
+# STOP! Before going any further, think: are you going to regret the decision
+# to write this script?
+#     Deciding to write this in bash was not one of my better decisions.
+#     -- https://twitter.com/alex_gaynor/status/369892494114164736
+
+IFS="`printf "\n\t"`"
+set -eu
+cd "$(dirname "$0")"
+
+# The temporary directory to use while creating the repo
+temprepo="/tmp/ibisect-test-temp"
+
+# The final destination
+targetrepo="test-repo"
+[ -e "$temprepo" ] && rm -rf "$temprepo"
+git init "$temprepo"
+cd "$temprepo"
+
+export VCSLOG_NOLOG=1
+export GIT_CONFIG_NOSYSTEM=1
+export GIT_CONFIG=/dev/null
+export HOME=/dev/null
+export GIT_COMMITTER_NAME="ibisect-test-author"
+export GIT_COMMITTER_EMAIL="ibisect-test@example.com"
+
+set -x
+
+commit() {
+    echo "$1" > commit-number.txt
+    git add commit-number.txt
+    git commit -am "Commit: $1"
+    git tag "$1"
+}
+
+# Create a repo with 20 commits
+for x in $(seq 1 20); do
+    commit "master-$x"
+done
+
+baserev="$(git rev-parse HEAD)"
+
+# Create b1 with 10 commits
+git checkout -b b1
+for x in $(seq 21 30); do
+    commit "b1-$x"
+done
+
+# Add 5 commits to master
+git checkout master
+for x in $(seq 21 25); do
+    commit "master-$x"
+done
+
+# Merge b1
+git merge b1 || true
+commit "merge-b1"
+
+# Create b2 with 15 commits
+git checkout -b b2 "$baserev" 
+for x in $(seq 21 35); do
+    commit "b2-$x"
+done
+
+# Add 5 more commits to master
+git checkout master
+for x in $(seq 26 30); do
+    commit "master-$x"
+done
+
+# Merge b2
+git merge b2 || true
+commit "merge-b2"
+
+# Add some more commits to master, for good measure
+for x in $(seq 31 35); do
+    commit "master-$x"
+done
+
+cd "$(dirname "$0")"
+[ -e "$targetrepo" ] && rm -rf "$targetrepo"
+mv "$temprepo" "$targetrepo"

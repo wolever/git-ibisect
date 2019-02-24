@@ -1,0 +1,19 @@
+run: ibisect
+expect: guess which commit is first good commit
+send: 4
+expect: ibisect (no good)>
+send: run ../compare-commit master-33
+expect: this commit looks good
+send: good
+expect: re-run
+send: y
+expect: this commit looks bad
+send:
+expect: re-run
+send:
+expect: this commit looks good
+send:
+expect: ibisect (finished: d40cd522)
+send: status
+expect: finished; first bad commit:
+expect: Commit: master-33

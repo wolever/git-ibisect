@@ -1,0 +1,2 @@
+[[ "$(cat commit-number.txt)" < "$1" ]]
+exit $?

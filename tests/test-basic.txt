@@ -1,0 +1,13 @@
+run: ibisect
+expect: guess which commit is first good commit
+send: 3
+expect: Note: checking out 'HEAD~3'
+expect: ibisect (no good)>
+send: good
+expect: ibisect (~1 commits)>
+send: bad
+expect: ibisect (~0 commits)>
+send: bad
+expect: ibisect (finished: d40cd522)
+send: reset
+expect: ibisect (not bisecting)>
