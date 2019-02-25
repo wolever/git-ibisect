@@ -4,12 +4,16 @@ from __future__ import print_function
 
 import os
 import sys
-import glob
 import shlex
 import codecs
 import subprocess as sp
 
 import pexpect
+
+try:
+    str = basestring
+except NameError:
+    pass
 
 testdir = os.path.abspath(os.path.dirname(__file__))
 path = lambda *a: os.path.join(testdir, *a)
@@ -22,7 +26,7 @@ def print_output(output):
 
 def _xcall(cmd, show_output=False, show_command=False):
     """ Returns the output of calling ``cmd``, or raises an exception if ``cmd`` fails. """
-    if isinstance(cmd, basestring):
+    if isinstance(cmd, str):
         cmd = cmd.split()
     if show_output or show_command:
         print(" ".join(cmd))
@@ -70,14 +74,14 @@ def run_test(fname):
             continue
         cmd, _, args_str = line.partition(":")
         args_str = args_str.lstrip()
-        args = filter(None, shlex.split(args_str))
+        args = list(filter(None, shlex.split(args_str)))
 
         if cmd == "checkout":
             xcall("git checkout " + " ".join(args))
 
         elif cmd == "run":
             if args[0] == "ibisect":
-                args[0] = path("../git-ibisect")
+                args[:1] = [sys.executable, path("../git-ibisect")]
             if cur_proc:
                 return error("Cannot run; process is already running.")
             cur_proc = pexpect.spawnu(" ".join(args))
@@ -106,5 +110,10 @@ def run_test(fname):
 
         print("  %s: OK!" %(line, ))
 
-for f in sys.argv[1:] or glob.glob("test-*.txt"):
+files = sys.argv[1:]
+if not files:
+    print("Usage: %s test-foo.txt [test-bar.txt ...]" %(sys.argv[1], ))
+    sys.exit(1)
+
+for f in files:
     run_test(f)

@@ -8,6 +8,6 @@ expect: ibisect (~1 commits)>
 send: bad
 expect: ibisect (~0 commits)>
 send: bad
-expect: ibisect (finished: d40cd522)
+expect: ibisect (finished:
 send: reset
 expect: ibisect (not bisecting)>

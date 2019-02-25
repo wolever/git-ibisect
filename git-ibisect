@@ -17,6 +17,16 @@ from contextlib import contextmanager
 
 Undefined = object()
 
+try:
+    input = raw_input
+except NameError:
+    pass
+
+try:
+    str = basestring
+except NameError:
+    pass
+
 def get_terminal_size():
     # copy-paste from StackOverflow: https://stackoverflow.com/a/3010495/71522
     # No idea if this will work on Windows and friends; PRs very appreciated
@@ -38,7 +48,7 @@ def indent(output):
 
 def _xcall(cmd, show_output=False, show_command=False):
     """ Returns the output of calling ``cmd``, or raises an exception if ``cmd`` fails. """
-    if isinstance(cmd, basestring):
+    if isinstance(cmd, str):
         cmd = cmd.split()
     if show_output or show_command:
         print(" ".join(cmd))
@@ -384,7 +394,7 @@ class IBisect(Cmd):
         msg += ": "
         res = None
         while not res:
-            res = raw_input(msg).strip()
+            res = input(msg).strip()
             if not res and default:
                 return default
             if empty:
@@ -433,7 +443,7 @@ class IBisect(Cmd):
 
     def git_call(self, cmd, x=True, show_output=True, show_command=False):
         with chdir(self.repo_root):
-            if isinstance(cmd, basestring):
+            if isinstance(cmd, str):
                 cmd = cmd.split()
             return (xcall if x else call)(["git"] + cmd, show_output=show_output, show_command=show_command)
 

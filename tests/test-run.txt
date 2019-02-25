@@ -13,7 +13,7 @@ expect: re-run
 send:
 expect: this commit looks good
 send:
-expect: ibisect (finished: d40cd522)
+expect: ibisect (finished:
 send: status
 expect: finished; first bad commit:
 expect: Commit: master-33
